@@ -1,0 +1,13 @@
+# Настройки `cargo audit` (проверка зависимостей по базе RustSec, см. .github/workflows/audit.yml).
+# Каждое исключение — с причиной. Пересматривать при обновлении IronRDP.
+
+[advisories]
+ignore = [
+    # rsa: атака Marvin — побочный канал по времени при операциях с закрытым
+    # RSA-ключом. Крейт тянет picky (Devolutions) для NLA/CredSSP; исправленной
+    # версии rsa нет. Клиент при входе по паролю своим закрытым RSA-ключом не
+    # пользуется, поэтому риск для Tarn низкий.
+    "RUSTSEC-2023-0071",
+]
+# Пометки «unmaintained» и т.п. — предупреждения, сборку не роняют.
+informational_warnings = ["unmaintained", "unsound", "notice"]

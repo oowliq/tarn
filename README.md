@@ -161,6 +161,7 @@ TARN_VERSION=0.2.0 cargo build --release
 
 CI (`.github/workflows/`):
 - `build.yml`: на каждый push clippy, тесты и release-сборка под Windows и macOS;
+- `audit.yml`: проверка зависимостей по базе уязвимостей RustSec (`cargo audit`) при изменении `Cargo.lock` и раз в неделю; принятые исключения с причинами — в `.cargo/audit.toml`;
 - `release.yml`: на тег `v*` собирает архивы, считает `SHA256SUMS.txt` и публикует GitHub Release. macOS-сборку подписывает постоянным сертификатом из секретов репозитория, иначе ad-hoc — см. [packaging/macos/README.md](packaging/macos/README.md).
 
 ```bash
