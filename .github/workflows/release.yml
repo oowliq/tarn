@@ -65,7 +65,11 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$P12" -k "$KEYCHAIN" -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # codesign ищет сертификат только в связках из списка поиска, даже с --keychain.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           rm -f "$P12"
+          # Имя и хеш сертификата (не секрет) — чтобы было видно, что импорт удался.
+          security find-identity -p codesigning "$KEYCHAIN"
           echo "TARN_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
           echo "TARN_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
       - name: Build universal .app
