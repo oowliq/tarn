@@ -1,0 +1,110 @@
+name: release
+
+# Релиз создаётся при пуше тега вида v0.2.0 (git tag v0.2.0 && git push origin v0.2.0).
+# Ручной запуск (workflow_dispatch) только собирает артефакты, без публикации релиза.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Версия, которую видит встроенная проверка обновлений (из тега, без «v»).
+  TARN_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/tarn.exe dist/
+          Copy-Item README.md dist/
+          Compress-Archive -Path dist/tarn.exe, dist/README.md -DestinationPath dist/tarn-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarn-windows
+          path: dist/tarn-windows-x64.zip
+
+  macos:
+    runs-on: macos-latest
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.MACOS_SIGN_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+      # Постоянный сертификат подписи (см. packaging/macos/README.md). Без секретов
+      # (например, в форке) сборка подписывается ad-hoc.
+      - name: Import signing certificate
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        if: env.HAS_SIGNING_CERT == 'true'
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/tarn-sign.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          P12="$RUNNER_TEMP/tarn-sign.p12"
+          printf '%s' "$MACOS_SIGN_P12" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          rm -f "$P12"
+          echo "TARN_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "TARN_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+      - name: Build universal .app
+        run: packaging/macos/build-app.sh "${GITHUB_REF_NAME}"
+      - name: Remove signing keychain
+        if: always() && env.TARN_SIGN_KEYCHAIN != ''
+        run: security delete-keychain "$TARN_SIGN_KEYCHAIN"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarn-macos
+          path: dist/tarn-macos-universal.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum *.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/tarn-windows-x64.zip
+            dist/tarn-macos-universal.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          body: |
+            ## Установка
+
+            **Windows:** распакуйте `tarn-windows-x64.zip` и запустите `tarn.exe`.
+            SmartScreen может предупредить о неизвестном издателе — «Подробнее» → «Выполнить в любом случае».
+
+            **macOS (Apple Silicon и Intel):** распакуйте `tarn-macos-universal.zip` и перенесите `tarn.app` в «Программы».
+            Приложение не нотаризовано, поэтому при первом запуске: правый клик → «Открыть», либо
+            `xattr -dr com.apple.quarantine /Applications/tarn.app`.
+            Для перехвата Cmd+Tab и т.п. дайте Tarn разрешение в «Системные настройки → Конфиденциальность и безопасность → Универсальный доступ».

@@ -1,0 +1,7 @@
+/target
+.DS_Store
+.claude/
+*.log
+/dist
+*.p12
+tarn-signing/

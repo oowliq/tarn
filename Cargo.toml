@@ -1,0 +1,65 @@
+[package]
+name = "tarn"
+version = "0.1.0"
+edition = "2024"
+description = "Быстрый RDP-клиент для macOS и Windows с keep-alive и MCP-сервером для агентов"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/oowliq/tarn"
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.22"
+directories = "6.0.0"
+eframe = "0.37.0"
+egui = "0.37"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ironrdp-client = { version = "0.1.0", features = ["rustls"] }
+ironrdp-pdu = "0.9"
+# Графический конвейер (GFX): протокол из ironrdp-egfx, декодеры из ironrdp-graphics.
+ironrdp-egfx = { version = "0.3.0", path = "vendor/ironrdp-egfx" }
+# Декодеры из свежей версии: в 0.9 Progressive и ClearCodec ломались на потоках Windows.
+# Живёт рядом со старым стеком движка, на вход получает только байты.
+ironrdp-graphics-next = { package = "ironrdp-graphics", version = "0.11" }
+ironrdp-pdu-next = { package = "ironrdp-pdu", version = "0.11" }
+keyring = "4.2.0"
+rand = "0.10.3"
+semver = "1.0.28"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11"
+smallvec = "1.16.4"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+ureq = { version = "3", default-features = false, features = ["json", "gzip", "rustls-no-provider", "rustls-webpki-roots"] }
+# Один crypto-провайдер на весь процесс (aws-lc-rs, как у ironrdp-tls). Если
+# включить ещё и ring (как делает ureq по умолчанию), rustls не сможет выбрать
+# провайдер сам и паникует при TLS-рукопожатии RDP.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+
+[target.'cfg(windows)'.dependencies]
+zip = { version = "9", default-features = false, features = ["deflate"] }
+# Перехват клавиатуры (сабкласс окна, WH_KEYBOARD_LL). Те же версии, что у winit/eframe.
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Перехват клавиатуры (монитор NSEvent). Те же версии, что у winit.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "block2"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["test-util", "macros", "rt"] }
+
+# Локальная копия движка с правками (см. vendor/ironrdp-client/README.md).
+[patch.crates-io]
+ironrdp-client = { path = "vendor/ironrdp-client" }
+ironrdp-connector = { path = "vendor/ironrdp-connector" }
